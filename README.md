@@ -114,7 +114,7 @@
 | object.hpp                | -    |
 | options.cpp               | -    |
 | options.hpp               | -    |
-| own.cpp                   | -    |
+| own.cpp                   | √    |
 | own.hpp                   | √    |
 | pair.cpp                  | -    |
 | pair.hpp                  | -    |
