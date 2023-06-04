@@ -185,7 +185,7 @@
 | signaler.cpp              | -    |
 | signaler.hpp              | -    |
 | socket_base.cpp           | -    |
-| socket_base.hpp           | -    |
+| socket_base.hpp           | √    |
 | socket_poller.cpp         | -    |
 | socket_poller.hpp         | -    |
 | socks_connecter.cpp       | -    |
