@@ -157,6 +157,7 @@ struct options_t
     bool invert_matching;
 
     //  If true, the routing id message is forwarded to the socket.
+    //  如果是真的话， 这个socket是需要 routing id 的
     bool recv_routing_id;
 
     // if true, router socket accepts non-zmq tcp connections

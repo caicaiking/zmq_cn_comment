@@ -313,14 +313,17 @@ zmq::i_mailbox *zmq::socket_base_t::get_mailbox () const
 void zmq::socket_base_t::stop ()
 {
     //  Called by ctx when it is terminated (zmq_ctx_term).
+    //  当它被终止时候， ctx会调用此函数
     //  'stop' command is sent from the threads that called zmq_ctx_term to
     //  the thread owning the socket. This way, blocking call in the
     //  owner thread can be interrupted.
+    //  从调用zmq_ctx_term线程发送命令到这个socket所在的线程， 这样所在的线程可以被打断
     send_stop ();
 }
 
 // TODO consider renaming protocol_ to scheme_ in conformance with RFC 3986
 // terminology, but this requires extensive changes to be consistent
+// 术语， 但这需要大量的更改保持一致
 int zmq::socket_base_t::parse_uri (const char *uri_,
                                    std::string &protocol_,
                                    std::string &path_)
@@ -346,6 +349,7 @@ int zmq::socket_base_t::parse_uri (const char *uri_,
 int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
 {
     //  First check out whether the protocol is something we are aware of.
+    //  先检查是否是我们所关心的协议
     if (protocol_ != protocol_name::inproc
 #if defined ZMQ_HAVE_IPC
         && protocol_ != protocol_name::ipc
@@ -364,6 +368,7 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
 #endif
 #if defined ZMQ_HAVE_TIPC
         // TIPC transport is only available on Linux.
+        // TIPC 传输协议只在linux平台上起作用
         && protocol_ != protocol_name::tipc
 #endif
 #if defined ZMQ_HAVE_NORM
@@ -380,6 +385,7 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
     //  Check whether socket type and transport protocol match.
     //  Specifically, multicast protocols can't be combined with
     //  bi-directional messaging patterns (socket types).
+    //  检查传输协议和socket类型是否匹配，具体来说组播模式不能和双向消息传播模式匹配
 #if defined ZMQ_HAVE_OPENPGM || defined ZMQ_HAVE_NORM
 #if defined ZMQ_HAVE_OPENPGM && defined ZMQ_HAVE_NORM
     if ((protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm
@@ -404,6 +410,7 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
     }
 
     //  Protocol is available.
+    //  协议类型可用
     return 0;
 }
 
@@ -412,14 +419,17 @@ void zmq::socket_base_t::attach_pipe (pipe_t *pipe_,
                                       bool locally_initiated_)
 {
     //  First, register the pipe so that we can terminate it later on.
+    //  首先，注册管道，以便后面我们可以终止它
     pipe_->set_event_sink (this);
     _pipes.push_back (pipe_);
 
     //  Let the derived socket type know about new pipe.
+    //  让派生socket类型知道新的管道来了
     xattach_pipe (pipe_, subscribe_to_all_, locally_initiated_);
 
     //  If the socket is already being closed, ask any new pipes to terminate
     //  straight away.
+    //  如果socket正在关闭， 让这个管道也直接关闭吧
     if (is_terminating ()) {
         register_term_acks (1);
         pipe_->terminate (false);
@@ -438,6 +448,7 @@ int zmq::socket_base_t::setsockopt (int option_,
     }
 
     //  First, check whether specific socket type overloads the option.
+    //  首先， 看看后续的派生类是否有重载了这些选项
     int rc = xsetsockopt (option_, optval_, optvallen_);
     if (rc == 0 || errno != EINVAL) {
         return rc;
@@ -445,6 +456,7 @@ int zmq::socket_base_t::setsockopt (int option_,
 
     //  If the socket type doesn't support the option, pass it to
     //  the generic option parser.
+    //  如果具体的socket不支持选项设置，就让通用的选项去处理吧
     rc = options.setsockopt (option_, optval_, optvallen_);
     update_pipe_options (option_);
 
@@ -469,6 +481,7 @@ int zmq::socket_base_t::getsockopt (int option_,
     if (option_ == ZMQ_FD) {
         if (_thread_safe) {
             // thread safe socket doesn't provide file descriptor
+            // 线程安全的socket不提供文件描述符
             errno = EINVAL;
             return -1;
         }
@@ -498,6 +511,7 @@ int zmq::socket_base_t::getsockopt (int option_,
         return do_getsockopt<int> (optval_, optvallen_, _thread_safe ? 1 : 0);
     }
 
+    // 如果上面都没有处理，就返回通用的选项处理
     return options.getsockopt (option_, optval_, optvallen_);
 }
 
@@ -515,6 +529,7 @@ int zmq::socket_base_t::leave (const char *group_)
     return xleave (group_);
 }
 
+//这些函数只有线程安全的socket 才有
 void zmq::socket_base_t::add_signaler (signaler_t *s_)
 {
     zmq_assert (_thread_safe);
@@ -523,6 +538,7 @@ void zmq::socket_base_t::add_signaler (signaler_t *s_)
     (static_cast<mailbox_safe_t *> (_mailbox))->add_signaler (s_);
 }
 
+//这些函数只有线程安全的socket 才有
 void zmq::socket_base_t::remove_signaler (signaler_t *s_)
 {
     zmq_assert (_thread_safe);
@@ -541,12 +557,14 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
     }
 
     //  Process pending commands, if any.
+    //  处理暂存的命令，如果有的话
     int rc = process_commands (0, false);
     if (unlikely (rc != 0)) {
         return -1;
     }
 
     //  Parse endpoint_uri_ string.
+    //  解析 endpoint_uri_ 字符串.
     std::string protocol;
     std::string address;
     if (parse_uri (endpoint_uri_, protocol, address)
@@ -554,10 +572,13 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         return -1;
     }
 
+    //如果这个是进程内部通信
     if (protocol == protocol_name::inproc) {
         const endpoint_t endpoint = {this, options};
+        // 注册端点，专门为inproc打造的，这里bind 是endpoint
         rc = register_endpoint (endpoint_uri_, endpoint);
         if (rc == 0) {
+            // 连接挂起的端点
             connect_pending (endpoint_uri_, this);
             _last_endpoint.assign (endpoint_uri_);
             options.connected = true;
@@ -590,6 +611,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         }
 
         //  Choose the I/O thread to run the session in.
+        //  选择一个IO线程，用于运行session
         io_thread_t *io_thread = choose_io_thread (options.affinity);
         if (!io_thread) {
             errno = EMTHREAD;
@@ -614,6 +636,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         errno_assert (session);
 
         //  Create a bi-directional pipe.
+        //  创建一个双向的管道
         object_t *parents[2] = {this, session};
         pipe_t *new_pipes[2] = {NULL, NULL};
 
@@ -623,13 +646,16 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         errno_assert (rc == 0);
 
         //  Attach local end of the pipe to the socket object.
+        //  将管道的本地端接到socket 对象上
         attach_pipe (new_pipes[0], true, true);
         pipe_t *const newpipe = new_pipes[0];
 
         //  Attach remote end of the pipe to the session object later on.
+        //  稍后将管道的远程端连接到会话对象上
         session->attach_pipe (new_pipes[1]);
 
         //  Save last endpoint URI
+        //  保存最近的 节点 URI
         paddr->to_string (_last_endpoint);
 
         //  TODO shouldn't this use _last_endpoint instead of endpoint_uri_? as in the other cases
@@ -642,16 +668,20 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
 
     //  Remaining transports require to be run in an I/O thread, so at this
     //  point we'll choose one.
+    //  剩下的传输需要运行在IO线程里面，因此在此刻我们选择一个IO线程
     io_thread_t *io_thread = choose_io_thread (options.affinity);
     if (!io_thread) {
         errno = EMTHREAD;
         return -1;
     }
 
+    //  如果是TCP传输协议
     if (protocol == protocol_name::tcp) {
+        // 创建一个tcp 监听器对象
         tcp_listener_t *listener =
           new (std::nothrow) tcp_listener_t (io_thread, this, options);
         alloc_assert (listener);
+        //  设置地址的时候就开始bind 和 listen了
         rc = listener->set_local_address (address.c_str ());
         if (rc != 0) {
             LIBZMQ_DELETE (listener);
@@ -661,6 +691,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         }
 
         // Save last endpoint URI
+        // 获取最后的节点的URI
         listener->get_local_address (_last_endpoint);
 
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
@@ -712,6 +743,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         }
 
         // Save last endpoint URI
+        // 获取最后的节点的URI
         listener->get_local_address (_last_endpoint);
 
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
@@ -734,6 +766,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         }
 
         // Save last endpoint URI
+        // 获取最后的节点的URI
         listener->get_local_address (_last_endpoint);
 
         // TODO shouldn't this use _last_endpoint as in the other cases?
@@ -769,6 +802,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
     return -1;
 }
 
+// 用于socket的connect 动作
 int zmq::socket_base_t::connect (const char *endpoint_uri_)
 {
     scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
@@ -783,12 +817,14 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     }
 
     //  Process pending commands, if any.
+    //  处理挂起的命令，如果有的话
     int rc = process_commands (0, false);
     if (unlikely (rc != 0)) {
         return -1;
     }
 
     //  Parse endpoint_uri_ string.
+    //  解析 endpoint_uri_  字符串
     std::string protocol;
     std::string address;
     if (parse_uri (endpoint_uri_, protocol, address)
@@ -800,12 +836,15 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
         //  TODO: inproc connect is specific with respect to creating pipes
         //  as there's no 'reconnect' functionality implemented. Once that
         //  is in place we should follow generic pipe creation algorithm.
+        //  因为没有实现 reconnect 的功能， 一旦到了这儿， 我们应该运行通用的管道创建算法
 
         //  Find the peer endpoint.
+        //  找到对等的端点
         const endpoint_t peer = find_endpoint (endpoint_uri_);
 
         // The total HWM for an inproc connection should be the sum of
         // the binder's HWM and the connector's HWM.
+        // 进程内部通信的总的高水位（HWM） 应该是 binder 端和 connector端 HWM的总和
         const int sndhwm = peer.socket == NULL
                              ? options.sndhwm
                              : options.sndhwm != 0 && peer.options.rcvhwm != 0
@@ -818,6 +857,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
                                  : 0;
 
         //  Create a bi-directional pipe to connect the peers.
+        //  创建一个双向的管道去连接到对端
         object_t *parents[2] = {this, peer.socket == NULL ? this : peer.socket};
         pipe_t *new_pipes[2] = {NULL, NULL};
 
@@ -839,6 +879,8 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             //  to send the routing id message or not. To resolve this,
             //  we always send our routing id and drop it later if
             //  the peer doesn't expect it.
+            //  由于对端是不存在的，所以我们不知道对端是否需要 routing id的消息，
+            //  为了解决这个问题， 我们通常采用是一直发送这个消息给套， 如果将来对端不需要的话就丢掉它
             send_routing_id (new_pipes[0], options);
 
 #ifdef ZMQ_BUILD_DRAFT_API
@@ -849,14 +891,17 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
 #endif
 
             const endpoint_t endpoint = {this, options};
+            // 由于对端不存在， 所以把自己挂起来，等待binder端的出现，再连接
             pend_connection (std::string (endpoint_uri_), endpoint, new_pipes);
         } else {
             //  If required, send the routing id of the local socket to the peer.
+            //  如果对端需要接收routing id的话， 将本地socket的routing id 发送到对端
             if (peer.options.recv_routing_id) {
                 send_routing_id (new_pipes[0], options);
             }
 
             //  If required, send the routing id of the peer to the local socket.
+            //  如果本地的socket 需要接收 routing id 的话， 将对端的routing id 发送给本地的socket（也就是自己）
             if (options.recv_routing_id) {
                 send_routing_id (new_pipes[1], peer.options);
             }
@@ -881,16 +926,21 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             //  Attach remote end of the pipe to the peer socket. Note that peer's
             //  seqnum was incremented in find_endpoint function. We don't need it
             //  increased here.
+            //  将远程的管道连接到对端的socket上。 注意的是对端不需要再增加seqnum了， 因为在find_endpoint
+            //  函数中已经调用过了。
             send_bind (peer.socket, new_pipes[1], false);
         }
 
         //  Attach local end of the pipe to this socket object.
+        //   将本地的管道连接到本地的socket 对象上。
         attach_pipe (new_pipes[0], false, true);
 
         // Save last endpoint URI
+        // 保存最后一次的端点信息
         _last_endpoint.assign (endpoint_uri_);
 
         // remember inproc connections for disconnect
+        // 将进程内部通信的 连接记录下来
         _inprocs.emplace (endpoint_uri_, new_pipes[0]);
 
         options.connected = true;
@@ -904,11 +954,13 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             // There is no valid use for multiple connects for SUB-PUB nor
             // DEALER-ROUTER nor REQ-REP. Multiple connects produces
             // nonsensical results.
+            // 一下socket对类型的多连接是不合法的： SUB-PUB、DEALER-ROUTER 和 REQ-REP。
             return 0;
         }
     }
 
     //  Choose the I/O thread to run the session in.
+    //  选择一个IO线程去运行会话
     io_thread_t *io_thread = choose_io_thread (options.affinity);
     if (!io_thread) {
         errno = EMTHREAD;
@@ -920,8 +972,10 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     alloc_assert (paddr);
 
     //  Resolve address (if needed by the protocol)
+    //  解析地支（如果协议需要的话）
     if (protocol == protocol_name::tcp) {
         //  Do some basic sanity checks on tcp:// address syntax
+        //  对 tcp:// 地址语法进行一些基本的健全性检查
         //  - hostname starts with digit or letter, with embedded '-' or '.'
         //  - IPv6 address may contain hex chars and colons.
         //  - IPv6 link local address may contain % followed by interface name / zone_id
@@ -931,6 +985,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
         //  - Address may contain two parts separated by ':'
         //  Following code is quick and dirty check to catch obvious errors,
         //  without trying to be fully accurate.
+        //  以下代码是快速和脏检查以捕获明显的错误，没有试图完全准确。
         const char *check = address.c_str ();
         if (isalnum (*check) || isxdigit (*check) || *check == '['
             || *check == ':') {
@@ -943,10 +998,13 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             }
         }
         //  Assume the worst, now look for success
+        //  假设是最糟坏的， 现在来找成功的
         rc = -1;
         //  Did we reach the end of the address safely?
+        //  我们是否安全到达了地址字符串的尾部？
         if (*check == 0) {
             //  Do we have a valid port string? (cannot be '*' in connect
+            //  我们是否有合法的端口字符串（端口里面是不能有*的）
             check = strrchr (address.c_str (), ':');
             if (check) {
                 check++;
@@ -960,6 +1018,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             return -1;
         }
         //  Defer resolution until a socket is opened
+        //  将解析的动作推迟到 这个socket被打开的时候
         paddr->resolved.tcp_addr = NULL;
     }
 #ifdef ZMQ_HAVE_WS
@@ -1067,6 +1126,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
 #endif
 
     //  Create session.
+    //  创建一个session
     session_base_t *session =
       session_base_t::create (io_thread, true, this, options, paddr);
     errno_assert (session);
@@ -1092,6 +1152,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
 
     if (options.immediate != 1 || subscribe_to_all) {
         //  Create a bi-directional pipe.
+        //  创建一个双向管道
         object_t *parents[2] = {this, session};
         pipe_t *new_pipes[2] = {NULL, NULL};
 
@@ -1104,15 +1165,18 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
         errno_assert (rc == 0);
 
         //  Attach local end of the pipe to the socket object.
+        //  将本地的管道连接到此socket对象上
         attach_pipe (new_pipes[0], subscribe_to_all, true);
         newpipe = new_pipes[0];
         LOG_I("new pipe: ptr:{}", fmt::ptr(new_pipes[1]));
 
         //  Attach remote end of the pipe to the session object later on.
+        //  稍后将管道的远程端连接到此会话上
         session->attach_pipe (new_pipes[1]);
     }
 
     //  Save last endpoint URI
+    //  保存最近的端点信息
     paddr->to_string (_last_endpoint);
 
     add_endpoint (make_unconnected_connect_endpoint_pair (endpoint_uri_),
@@ -1152,7 +1216,10 @@ void zmq::socket_base_t::add_endpoint (
   const endpoint_uri_pair_t &endpoint_pair_, own_t *endpoint_, pipe_t *pipe_)
 {
     //  Activate the session. Make it a child of this socket.
+    //  激活会话， 使之成为socket的子项
     launch_child (endpoint_);
+
+    //插入到_endpoints 中
     _endpoints.ZMQ_MAP_INSERT_OR_EMPLACE (endpoint_pair_.identifier (),
                                           endpoint_pipe_t (endpoint_, pipe_));
 

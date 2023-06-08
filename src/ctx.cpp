@@ -744,6 +744,7 @@ void zmq::ctx_t::pend_connection (const std::string &addr_,
     const endpoints_t::iterator it = _endpoints.find (addr_);
     if (it == _endpoints.end ()) {
         //  Still no bind.
+        //  仍然没有 绑定端
         endpoint_.socket->inc_seqnum ();
         _pending_connections.ZMQ_MAP_INSERT_OR_EMPLACE (addr_,
                                                         pending_connection);
